@@ -25,7 +25,7 @@ usage() {
 	Add to /etc/rc.local before exit 0 (/etc/rc.local must exit 0)
 
 	Note: Remember to chown the -m directory if your planing on writing
-		to it via a user other than root. 
+		to it via a user other than root.
 
 	Options
 	-t 		Partition type Linux Swap/Linux [ 82 | 83 ]
@@ -88,6 +88,10 @@ function error_exit {
 	exit 1
 }
 
+#   ----------------------------------------------------------------
+#	Default Disk
+#   ----------------------------------------------------------------
+disk="/dev/xvdb"
 
 #   ----------------------------------------------------------------
 #	Default log location
@@ -127,7 +131,7 @@ fileSystemFormat="$fileSystemFormatArg"
 #   ----------------------------------------------------------------
 #	File system type. Supports: swap, ext2, ext3 & ext4
 #   ----------------------------------------------------------------
-	
+
 if ! [[ $fileSystemFormat == swap ]]; then
 	if [ -z $mountLocationArg ]; then
 		error_exit "Partition type -m requires an argument!"
@@ -140,18 +144,18 @@ function checkEphemeralStorage {
 #	Function for checking Ephemeral storage which should be
 #		on /dev/xvdb (Unless not avaiable for instance type)
 #	----------------------------------------------------------------
-	sfdisk -l /dev/xvdb > /dev/null 2>&1 || error_exit "Ephemeral storage not available"
+	sfdisk -l ${disk} > /dev/null 2>&1 || error_exit "Ephemeral storage not available"
 
-	for line in `sfdisk -l /dev/xvdb 2>&1 | grep -A 1 \/dev\/xvdb:\ unrecognized\ partition\ table\ type`
+	for line in `sfdisk -l ${disk} 2>&1 | grep -A 1 \/dev\/xvdb:\ unrecognized\ partition\ table\ type`
 	do
 		if [[ $? -ne 0 ]]; then
 			error_exit "Ephemeral storage not available"
 		fi
 		hddA+=( $line )
 	done
-	echo ${hddA[0]} | grep -q \/dev\/xvdb:\ unrecognized\ partition\ table\ type 
+	echo ${hddA[0]} | grep -q \/dev\/xvdb:\ unrecognized\ partition\ table\ type
 	if [[ $? = 0 ]]; then
-		echo "Ephemeral storage available on /dev/xvdb" >> $log
+		echo "Ephemeral storage available on ${disk}" >> $log
 		checkEphemeralStorage_result=1
 	else
 		echo "Ephemeral storage already has a partition structure or is unavailable!" >> $log
@@ -161,7 +165,7 @@ function checkEphemeralStorage {
 
 function createPartition {
 #   ----------------------------------------------------------------
-#   Function to create partitions on Ephemeral storage 
+#   Function to create partitions on Ephemeral storage
 #   on /dev/xvdb (Unless not avaiable for instance type)
 #	*** Caution will overwrite any data on /dev/xvdb ****
 #   ----------------------------------------------------------------
@@ -181,15 +185,15 @@ function createPartition {
 	local _partitionType=$1
 	local _partitionSize=$2
 
-	umount /dev/xvdb >> $log 2>&1
-sfdisk /dev/xvdb  >> $log 2>&1 << EOF
+	umount ${disk} >> $log 2>&1
+sfdisk ${disk}  >> $log 2>&1 << EOF
 ,${_partitionSize},${_partitionType}
 ,
 ;
 ;
 EOF
 	if [ $? = 0 ]; then createPartition_result=1; fi
-} 	
+}
 
 function mountPartition {
 #       ----------------------------------------------------------------
@@ -199,11 +203,11 @@ function mountPartition {
 #		*** This function will remove all data on the selected partition ***
 #							*** WARNING ***
 #       ----------------------------------------------------------------
-	
+
 	cat /proc/mounts | grep -q \/dev\/xvdb1 >> $log 2>&1
 	local _isAlreadyMounted=$?
 	if [ $_isAlreadyMounted = 0 ]; then
-		echo "/dev/xvdb1 device already mounted!" >> $log
+		echo "${disk}1 device already mounted!" >> $log
 		exit 0
 	fi
 	local _mountType=$1
@@ -220,16 +224,16 @@ function mountPartition {
 		fi
 	fi
 
-    local _partitionType=`sfdisk --print-id /dev/xvdb 1`
+    local _partitionType=`sfdisk --print-id ${disk} 1`
     local _partitionTypeStatus=$?
 
     if [[ $_partitionTypeStatus = 0 ]] && [[ $_partitionType == 82 ]] && [[ $_mountType == swap ]]; then
 		echo "Mounting swap partition" >> $log
-		/sbin/swapon /dev/xvdb1 >> $log 2>&1
+		/sbin/swapon ${disk}1 >> $log 2>&1
 		if [ $? = 1 ]; then error_exit "Unable to mount swap at $LINENO"; fi
 	elif [[ $_partitionTypeStatus = 0 ]] && [[ $_partitionType == 83 ]] && [[ $_mountType =~ (ext2|ext3|ext4) ]]; then
 		echo "Mounting $_mountType partition" >> $log
-		/bin/mount /dev/xvdb1 $mountLocation >> $log 2>&1
+		/bin/mount ${disk}1 $mountLocation >> $log 2>&1
 		if [ $? = 1 ]; then error_exit "Unable to mount $_mountType at $LINENO"; fi
 	else
 		error_exit "Unable to determine disk format or mount location at line: $LINENO"
@@ -251,23 +255,23 @@ function formatPartition {
 	fi
 
 	local _fileSystemFormat=$1
-    local _partitionTypeCheck=`sfdisk --print-id /dev/xvdb 1`
+    local _partitionTypeCheck=`sfdisk --print-id ${disk} 1`
     local _partitionTypeCheckStatus=$?
 
     if [[ $_partitionTypeCheckStatus == 0 ]] && [[ $_partitionTypeCheck == 82 ]] && [[ $_fileSystemFormat == swap ]]; then
 	   	echo "Fomatting swap partition" >> $log
-       	/sbin/mkswap /dev/xvdb1 >> $log 2>&1
+       	/sbin/mkswap ${disk}1 >> $log 2>&1
        	if [ $? = 0 ]; then formatPartition_result=1; fi
 	elif [[ $_partitionTypeCheckStatus == 0 ]] && [[ $_partitionTypeCheck == 83 ]] && [[ $_fileSystemFormat == ext2 ]]; then
 		echo "Formatting Linux ext2 partition" >> $log
-		/sbin/mkfs.ext2 /dev/xvdb1 >> $log 2>&1
+		/sbin/mkfs.ext2 ${disk}1 >> $log 2>&1
 		if [ $? = 0 ]; then formatPartition_result=1; fi
 	elif [[ $_partitionTypeCheckStatus == 0 ]] && [[ $_partitionTypeCheck == 83 ]] && [[ $_fileSystemFormat == ext3 ]]; then
 		echo "Formatting Linux ext3 partition" >> $log
-		/sbin/mkfs.ext3 /dev/xvdb1 >> $log 2>&1
+		/sbin/mkfs.ext3 ${disk}1 >> $log 2>&1
 	elif [[ $_partitionTypeCheckStatus == 0 ]] && [[ $_partitionTypeCheck == 83 ]] && [[ $_fileSystemFormat == ext4 ]]; then
 		echo "Formatting Linux ext4 partition" >> $log
-		/sbin/mkfs.ext3 /dev/xvdb1 >> $log 2>&1
+		/sbin/mkfs.ext3 ${disk}1 >> $log 2>&1
 		if [ $? = 0 ]; then formatPartition_result=1; fi
 	else
 		error_exit "Error formating, Unable to determine disk format or file system format at line: $LINENO"
@@ -275,7 +279,7 @@ function formatPartition {
 }
 
 #   ----------------------------------------------------------------
-#	Check if Ephemeral storage is avaiable and proceed. 
+#	Check if Ephemeral storage is avaiable and proceed.
 #   ----------------------------------------------------------------
 checkEphemeralStorage
 

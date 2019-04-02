@@ -9,4 +9,4 @@ A script to format the ephermeral storage on Amazon EC2 instances, used mainly t
 
 `sudo /home/ubuntu/scripts/aws-ephemeral-format.sh -t 82 -s 1024 -f swap`
 
-Note: The script will not format the ephemeral storage if it alredady contains a partition table. 
+Note: The script will not format the ephemeral storage if it already contains a partition table. 
